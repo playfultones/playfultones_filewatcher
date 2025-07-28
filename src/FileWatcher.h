@@ -74,7 +74,7 @@ namespace PlayfulTones::FileWatcher
 
     private:
         // efsw::FileWatchListener
-        void handleFileAction (efsw::WatchID watchid, const std::string& dir, const std::string& filename, efsw::Action action, std::string oldFilename = "") override;
+        void handleFileAction (efsw::WatchID watchId, const std::string& dir, const std::string& filename, efsw::Action action, std::string oldFilename) override;
 
         std::unique_ptr<efsw::FileWatcher> fileWatcher;
         efsw::WatchID watchId;

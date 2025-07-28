@@ -95,7 +95,7 @@ namespace PlayfulTones::FileWatcher
 
     void FileWatcher::handleAsyncUpdate()
     {
-        const juce::ScopedLock lock (listenersLock);
+        const juce::ScopedLock listenerLock (listenersLock);
         juce::Array<PendingFileAction> actionsToProcess;
 
         {
