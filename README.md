@@ -98,6 +98,8 @@ fileWatcher.startWatching (directoryToWatch, true, true); // useAsync=true
 
 ### Step 1: Add efsw dependency
 
+### FetchContent
+
 Add efsw to your CMake project using FetchContent:
 
 ```cmake
@@ -112,6 +114,19 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(efsw)
 
 # Link efsw to your target
+target_link_libraries(YourTarget PRIVATE efsw)
+```
+
+### CPM
+
+If you are using CPM, add the following to your `CMakeLists.txt`:
+
+```cmake
+CPMAddPackage(
+    NAME efsw
+    GITHUB_REPOSITORY SpartanJ/efsw
+    GIT_TAG master  # or specific version tag
+)
 target_link_libraries(YourTarget PRIVATE efsw)
 ```
 
