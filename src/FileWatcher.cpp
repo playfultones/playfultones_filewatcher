@@ -35,7 +35,15 @@ namespace PlayfulTones::FileWatcher
 
         // For individual files, efsw watches the parent directory but filters for the specific file
         // The recursive parameter is ignored for individual files
-        watchId = fileWatcher->addWatch (pathToWatch.getFullPathName().toStdString(), this, recursive);
+        if (pathToWatch.isDirectory())
+        {
+            watchId = fileWatcher->addWatch (pathToWatch.getFullPathName().toStdString(), this, recursive);
+        }
+        else
+        {
+            // For files, watch the parent directory
+            watchId = fileWatcher->addWatch (pathToWatch.getParentDirectory().getFullPathName().toStdString(), this, false);
+        }
 
         if (watchId != -1)
             fileWatcher->watch();
@@ -74,6 +82,12 @@ namespace PlayfulTones::FileWatcher
 
     void FileWatcher::handleFileAction (efsw::WatchID, const std::string& dir, const std::string& filename, efsw::Action action, std::string oldFilename)
     {
+        // If watching a specific file, only process events for that file
+        if (watchedPath.existsAsFile() && filename != watchedPath.getFileName().toStdString())
+        {
+            return;
+        }
+
         const auto file = juce::File (juce::String (dir) + juce::File::getSeparatorString() + juce::String (filename));
         const auto oldFile = oldFilename.empty() ? juce::File()
                                                  : juce::File (juce::String (dir) + juce::File::getSeparatorString() + juce::String (oldFilename));
