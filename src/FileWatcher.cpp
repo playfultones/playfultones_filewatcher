@@ -14,6 +14,9 @@ namespace PlayfulTones::FileWatcher
     FileWatcher::~FileWatcher()
     {
         stopWatching();
+
+        // Join the efsw thread before base-class destructors rewind the vptr.
+        fileWatcher.reset();
     }
 
     void FileWatcher::startWatching (const juce::File& pathToWatch, bool useAsync, bool recursive)
