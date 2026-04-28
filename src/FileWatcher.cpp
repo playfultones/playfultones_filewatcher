@@ -6,17 +6,74 @@
 
 namespace PlayfulTones::FileWatcher
 {
-    FileWatcher::FileWatcher()
-        : fileWatcher (std::make_unique<efsw::FileWatcher>()), watchId (-1), useAsyncUpdates (false)
+    // Listener indirection so callbacks already in flight have somewhere safe
+    // to land after the owning FileWatcher is gone. Held by shared_ptr and
+    // retired to the graveyard below.
+    class FileWatcher::CallbackTrampoline : public efsw::FileWatchListener
     {
+    public:
+        std::atomic<FileWatcher*> owner { nullptr };
+
+        void handleFileAction (efsw::WatchID id, const std::string& dir,
+            const std::string& filename, efsw::Action action,
+            std::string oldFilename) override
+        {
+            if (auto* fw = owner.load (std::memory_order_acquire))
+                fw->handleFileAction (id, dir, filename, action, std::move (oldFilename));
+        }
+    };
+
+    namespace
+    {
+        // efsw::WatcherFSEvents::~WatcherFSEvents tears down the FSEventStream
+        // without draining its libdispatch queue, so a callback already
+        // dispatched can fire on a freed WatcherFSEvents. Keep the watcher and
+        // its listener alive by retiring them here instead of destroying them.
+        struct GraveyardEntry
+        {
+            std::unique_ptr<efsw::FileWatcher> efsw;
+            std::shared_ptr<efsw::FileWatchListener> listener;
+        };
+
+        struct Graveyard
+        {
+            juce::CriticalSection lock;
+            std::vector<GraveyardEntry> entries;
+        };
+
+        Graveyard& getGraveyard()
+        {
+            static Graveyard g;
+            return g;
+        }
+
+        void retireToGraveyard (std::unique_ptr<efsw::FileWatcher> efsw,
+            std::shared_ptr<efsw::FileWatchListener> listener)
+        {
+            if (efsw == nullptr && listener == nullptr)
+                return;
+
+            auto& graveyard = getGraveyard();
+            const juce::ScopedLock lock (graveyard.lock);
+            graveyard.entries.push_back ({ std::move (efsw), std::move (listener) });
+        }
+    } // namespace
+
+    FileWatcher::FileWatcher()
+        : fileWatcher (std::make_unique<efsw::FileWatcher>()),
+          trampoline (std::make_shared<CallbackTrampoline>()),
+          watchId (-1),
+          useAsyncUpdates (false)
+    {
+        trampoline->owner.store (this, std::memory_order_release);
     }
 
     FileWatcher::~FileWatcher()
     {
-        stopWatching();
+        if (trampoline)
+            trampoline->owner.store (nullptr, std::memory_order_release);
 
-        // Join the efsw thread before base-class destructors rewind the vptr.
-        fileWatcher.reset();
+        retireToGraveyard (std::move (fileWatcher), std::move (trampoline));
     }
 
     void FileWatcher::startWatching (const juce::File& pathToWatch, bool useAsync, bool recursive)
@@ -40,12 +97,12 @@ namespace PlayfulTones::FileWatcher
         // The recursive parameter is ignored for individual files
         if (pathToWatch.isDirectory())
         {
-            watchId = fileWatcher->addWatch (pathToWatch.getFullPathName().toStdString(), this, recursive);
+            watchId = fileWatcher->addWatch (pathToWatch.getFullPathName().toStdString(), trampoline.get(), recursive);
         }
         else
         {
             // For files, watch the parent directory
-            watchId = fileWatcher->addWatch (pathToWatch.getParentDirectory().getFullPathName().toStdString(), this, false);
+            watchId = fileWatcher->addWatch (pathToWatch.getParentDirectory().getFullPathName().toStdString(), trampoline.get(), false);
         }
 
         if (watchId != -1)
@@ -54,13 +111,8 @@ namespace PlayfulTones::FileWatcher
 
     void FileWatcher::stopWatching()
     {
-        if (watchId != -1)
-        {
-            fileWatcher->removeWatch (watchId);
-            watchId = -1;
-        }
-
         watchedPath = juce::File();
+        watchId = -1;
 
         // Clear any pending async updates
         {
@@ -69,6 +121,15 @@ namespace PlayfulTones::FileWatcher
         }
 
         cancelPendingUpdate();
+
+        if (trampoline)
+            trampoline->owner.store (nullptr, std::memory_order_release);
+
+        retireToGraveyard (std::move (fileWatcher), std::move (trampoline));
+
+        fileWatcher = std::make_unique<efsw::FileWatcher>();
+        trampoline = std::make_shared<CallbackTrampoline>();
+        trampoline->owner.store (this, std::memory_order_release);
     }
 
     void FileWatcher::addListener (FileWatcherListener* listener)
