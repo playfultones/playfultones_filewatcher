@@ -43,8 +43,13 @@ namespace PlayfulTones::FileWatcher
 
         Graveyard& getGraveyard()
         {
-            static Graveyard g;
-            return g;
+            // Intentionally leaked. If the Graveyard ran a destructor at
+            // process exit it would tear down the retired efsw::FileWatchers
+            // and trampolines while libdispatch can still deliver FSEvents
+            // callbacks, reintroducing the use-after-free we're working
+            // around.
+            static Graveyard* g = new Graveyard();
+            return *g;
         }
 
         void retireToGraveyard (std::unique_ptr<efsw::FileWatcher> efsw,
