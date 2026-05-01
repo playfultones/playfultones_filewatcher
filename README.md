@@ -98,6 +98,8 @@ fileWatcher.startWatching (directoryToWatch, true, true); // useAsync=true
 
 ### Step 1: Add efsw dependency
 
+> **Note:** Until [SpartanJ/efsw#210](https://github.com/SpartanJ/efsw/pull/210) is merged upstream, we recommend using the [`playfultones/efsw`](https://github.com/playfultones/efsw) fork. It carries a fix for a teardown data race in `WatcherFSEvents` on macOS that can cause use-after-free crashes when a `FileWatcher` is destroyed while an FSEvents callback is still in flight on its dispatch queue.
+
 ### FetchContent
 
 Add efsw to your CMake project using FetchContent:
@@ -107,7 +109,7 @@ include(FetchContent)
 
 FetchContent_Declare(
     efsw
-    GIT_REPOSITORY https://github.com/SpartanJ/efsw.git
+    GIT_REPOSITORY https://github.com/playfultones/efsw.git
     GIT_TAG master  # or specific version tag
 )
 
@@ -124,7 +126,7 @@ If you are using CPM, add the following to your `CMakeLists.txt`:
 ```cmake
 CPMAddPackage(
     NAME efsw
-    GITHUB_REPOSITORY SpartanJ/efsw
+    GITHUB_REPOSITORY playfultones/efsw
     GIT_TAG master  # or specific version tag
 )
 target_link_libraries(YourTarget PRIVATE efsw)
