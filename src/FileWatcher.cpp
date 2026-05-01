@@ -83,7 +83,7 @@ namespace PlayfulTones::FileWatcher
         listeners.remove (listener);
     }
 
-    void FileWatcher::handleFileAction (efsw::WatchID, const std::string& dir, const std::string& filename, efsw::Action action, std::string oldFilename)
+    void FileWatcher::handleFileAction (efsw::WatchID, const std::string& dir, const std::string& filename, efsw::Action action, const std::string& oldFilename)
     {
         // If watching a specific file, only process events for that file
         if (watchedPath.existsAsFile() && filename != watchedPath.getFileName().toStdString())
