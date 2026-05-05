@@ -33,34 +33,45 @@ namespace PlayfulTones::FileWatcher
             return;
         }
 
-        watchedPath = pathToWatch;
         useAsyncUpdates = useAsync;
 
-        // For individual files, efsw watches the parent directory but filters for the specific file
-        // The recursive parameter is ignored for individual files
-        if (pathToWatch.isDirectory())
+        // Publish the path before addWatch so callbacks fired during registration see it.
         {
-            watchId = fileWatcher->addWatch (pathToWatch.getFullPathName().toStdString(), this, recursive);
-        }
-        else
-        {
-            // For files, watch the parent directory
-            watchId = fileWatcher->addWatch (pathToWatch.getParentDirectory().getFullPathName().toStdString(), this, false);
+            const juce::ScopedLock lock (stateLock);
+            watchedPath = pathToWatch;
         }
 
-        if (watchId != -1)
+        // For individual files, efsw watches the parent directory and we filter by name.
+        const auto efswPath = pathToWatch.isDirectory()
+                                  ? pathToWatch.getFullPathName().toStdString()
+                                  : pathToWatch.getParentDirectory().getFullPathName().toStdString();
+        const bool efswRecursive = pathToWatch.isDirectory() ? recursive : false;
+        const auto newWatchId = fileWatcher->addWatch (efswPath, this, efswRecursive);
+
+        {
+            const juce::ScopedLock lock (stateLock);
+            watchId = newWatchId;
+            if (newWatchId == -1)
+                watchedPath = juce::File();
+        }
+
+        if (newWatchId != -1)
             fileWatcher->watch();
     }
 
     void FileWatcher::stopWatching()
     {
-        if (watchId != -1)
+        efsw::WatchID idToRemove = -1;
+
         {
-            fileWatcher->removeWatch (watchId);
+            const juce::ScopedLock lock (stateLock);
+            idToRemove = watchId;
             watchId = -1;
+            watchedPath = juce::File();
         }
 
-        watchedPath = juce::File();
+        if (idToRemove != -1)
+            fileWatcher->removeWatch (idToRemove);
 
         // Clear any pending async updates
         {
@@ -69,6 +80,18 @@ namespace PlayfulTones::FileWatcher
         }
 
         cancelPendingUpdate();
+    }
+
+    bool FileWatcher::isWatching() const noexcept
+    {
+        const juce::ScopedLock lock (stateLock);
+        return watchId != -1;
+    }
+
+    juce::File FileWatcher::getWatchedPath() const noexcept
+    {
+        const juce::ScopedLock lock (stateLock);
+        return watchedPath;
     }
 
     void FileWatcher::addListener (FileWatcherListener* listener)
@@ -85,11 +108,18 @@ namespace PlayfulTones::FileWatcher
 
     void FileWatcher::handleFileAction (efsw::WatchID, const std::string& dir, const std::string& filename, efsw::Action action, const std::string& oldFilename)
     {
-        // If watching a specific file, only process events for that file
-        if (watchedPath.existsAsFile() && filename != watchedPath.getFileName().toStdString())
+        juce::File capturedPath;
+
         {
-            return;
+            const juce::ScopedLock lock (stateLock);
+            if (watchedPath == juce::File())
+                return; // stopWatching has cleared the path; this callback is stale
+            capturedPath = watchedPath;
         }
+
+        // If watching a specific file, only process events for that file
+        if (capturedPath.existsAsFile() && filename != capturedPath.getFileName().toStdString())
+            return;
 
         const auto file = juce::File (juce::String (dir) + juce::File::getSeparatorString() + juce::String (filename));
         const auto oldFile = oldFilename.empty() ? juce::File()
