@@ -45,13 +45,13 @@ namespace PlayfulTones::FileWatcher
             
             @return true if a directory is being monitored, false otherwise
         */
-        bool isWatching() const noexcept { return watchId != -1; }
+        bool isWatching() const noexcept;
 
         /** @brief Returns the file or directory currently being watched.
             
             @return The file or directory being monitored, or an invalid File if not watching
         */
-        juce::File getWatchedPath() const noexcept { return watchedPath; }
+        juce::File getWatchedPath() const noexcept;
 
         /** @brief Adds a listener to receive file action notifications.
             
@@ -91,7 +91,7 @@ namespace PlayfulTones::FileWatcher
         };
 
         juce::Array<PendingFileAction> pendingActions;
-        juce::CriticalSection pendingActionsLock, listenersLock;
+        juce::CriticalSection pendingActionsLock, listenersLock, stateLock;
 
         static FileAction convertEfswAction (efsw::Action action);
         void notifyListeners (const juce::File& file, const juce::File& oldFile, FileAction action);
